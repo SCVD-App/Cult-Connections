@@ -364,7 +364,7 @@ const FALLBACK_BANKS = {
       {label:"FAMOUS ONE-NAME ROCK MUSICIANS",items:["SLASH","BONO","PRINCE","STING"]},
     ]},
     {themeLabel:"CROSSROADS & CREDITS",categories:[
-      {label:"CROSSROADS FILM CHARACTERS",items:["EUGENE MARTONE","WILLIE BROWN","SCRATCH","LIGHTNING BOY"]},
+      {label:"CROSSROADS FILM CHARACTERS",items:["EUGENE MARTONE","WILLIE BROWN","SCRATCH","JACK BUTLER"]},
       {label:"CLASSIC ROCK BANDS WITH COLOURS",items:["THE BLACK KEYS","DEEP PURPLE","GOLDEN EARRING","WHITE STRIPES"]},
       {label:"LED ZEPPELIN ALBUMS",items:["PHYSICAL GRAFFITI","HOUSES OF THE HOLY","PRESENCE","IN THROUGH THE OUT DOOR"]},
       {label:"SEINFELD — GEORGE'S FAKE JOBS",items:["ARCHITECT","MARINE BIOLOGIST","IMPORTER/EXPORTER","LATEX SALESMAN"]},
@@ -492,16 +492,52 @@ const FALLBACK_BANKS = {
   ],
 };
 
-// Track fallback index per player to avoid repeats
-const FALLBACK_IDX = {scott:0,kids:0,mixed:0,seinfeld:0};
+// ══════════════════════════════════════
+// PUZZLE ROTATION — shuffled "no repeat until bag is empty" queue,
+// persisted to localStorage so it survives phone locks / tab reloads
+// (the old version was a plain in-memory counter that reset to 0
+// on every reload, causing heavy repetition of early puzzles)
+// ══════════════════════════════════════
+function shuffle(arr){
+  const a = [...arr];
+  for(let i = a.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function getShuffleBag(player, bankLength){
+  try{
+    const raw = localStorage.getItem(`cc_bag_${player}`);
+    if(raw){
+      const bag = JSON.parse(raw);
+      // bag becomes invalid if the bank size changed (new content added) — reshuffle fresh
+      if(Array.isArray(bag) && bag.length > 0 && Math.max(...bag) < bankLength){
+        return bag;
+      }
+    }
+  }catch(e){}
+  return shuffle([...Array(bankLength).keys()]);
+}
+
+function saveShuffleBag(player, bag){
+  try{ localStorage.setItem(`cc_bag_${player}`, JSON.stringify(bag)); }
+  catch(e){}
+}
 
 function getFallback(){
   const player = S.player in FALLBACK_BANKS ? S.player : 'mixed';
   const bank = FALLBACK_BANKS[player];
-  const idx = FALLBACK_IDX[player] % bank.length;
-  FALLBACK_IDX[player]++;
+  let bag = getShuffleBag(player, bank.length);
+  const idx = bag.pop();
+  if(bag.length === 0){
+    bag = shuffle([...Array(bank.length).keys()]);
+  }
+  saveShuffleBag(player, bag);
   return bank[idx];
 }
+
 
 function closeHintDrawer(){
   document.getElementById('hintDrawer').classList.remove('open');
