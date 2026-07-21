@@ -504,7 +504,7 @@ const FALLBACK_BANKS = {
 // (the old version was a plain in-memory counter that reset to 0
 // on every reload, causing heavy repetition of early puzzles)
 // ══════════════════════════════════════
-function shuffle(arr){
+function shuffleArray(arr){
   const a = [...arr];
   for(let i = a.length - 1; i > 0; i--){
     const j = Math.floor(Math.random() * (i + 1));
@@ -524,7 +524,7 @@ function getShuffleBag(player, bankLength){
       }
     }
   }catch(e){}
-  return shuffle([...Array(bankLength).keys()]);
+  return shuffleArray([...Array(bankLength).keys()]);
 }
 
 function saveShuffleBag(player, bag){
@@ -538,7 +538,7 @@ function getFallback(){
   let bag = getShuffleBag(player, bank.length);
   const idx = bag.pop();
   if(bag.length === 0){
-    bag = shuffle([...Array(bank.length).keys()]);
+    bag = shuffleArray([...Array(bank.length).keys()]);
   }
   saveShuffleBag(player, bag);
   return bank[idx];
