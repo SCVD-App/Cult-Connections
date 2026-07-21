@@ -218,7 +218,13 @@ function renderAccessStatus(){
 }
 
 // Redeem a token returned from Stripe checkout (via ?cc_token=... redirect, or pasted manually)
-async function redeemToken(tokenStr){
+// Retries a few times: the browser can land back here slightly before the
+// Stripe webhook has finished flipping the token from "pending" to "paid"
+// in KV, so a single immediate check can lose that race.
+async function redeemToken(tokenStr, attempt = 1){
+  const MAX_ATTEMPTS = 5;
+  const RETRY_DELAY_MS = 1500;
+
   try{
     const res = await fetch(`${CC_WORKER}/verify-token`, {
       method:'POST',
@@ -226,16 +232,33 @@ async function redeemToken(tokenStr){
       body: JSON.stringify({ token: tokenStr })
     });
     const data = await res.json();
-    if(!data.valid){
-      showMsg(`Unlock failed: ${data.reason || 'invalid token'}`, 'var(--orange)', 3000);
-      return false;
+
+    if(data.valid){
+      localStorage.setItem('cc_unlock_tier', data.tier);
+      localStorage.setItem('cc_unlock_expiry', data.expiry);
+      renderAccessStatus();
+      showMsg(`🔓 Unlocked — ${(CC_TIERS[data.tier]||{}).label || data.tier}!`, 'var(--green)', 3000);
+      return true;
     }
-    localStorage.setItem('cc_unlock_tier', data.tier);
-    localStorage.setItem('cc_unlock_expiry', data.expiry);
-    renderAccessStatus();
-    showMsg(`🔓 Unlocked — ${(CC_TIERS[data.tier]||{}).label || data.tier}!`, 'var(--green)', 3000);
-    return true;
+
+    // Payment confirmed but webhook hasn't landed yet — worth retrying quietly
+    const stillPending = (data.reason || '').toLowerCase().includes('not yet confirmed');
+    if(stillPending && attempt < MAX_ATTEMPTS){
+      if(attempt === 1){
+        showMsg('Confirming your payment…', 'var(--muted)', RETRY_DELAY_MS);
+      }
+      await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+      return redeemToken(tokenStr, attempt + 1);
+    }
+
+    // Genuinely invalid, or we've retried enough times — give up and say so
+    showMsg(`Unlock failed: ${data.reason || 'invalid token'}`, 'var(--orange)', 4000);
+    return false;
   }catch(e){
+    if(attempt < MAX_ATTEMPTS){
+      await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+      return redeemToken(tokenStr, attempt + 1);
+    }
     showMsg('Could not verify unlock — check connection and try again', 'var(--orange)', 3000);
     return false;
   }
