@@ -237,29 +237,29 @@ async function redeemToken(tokenStr, attempt = 1){
       localStorage.setItem('cc_unlock_tier', data.tier);
       localStorage.setItem('cc_unlock_expiry', data.expiry);
       renderAccessStatus();
-      showMsg(`🔓 Unlocked — ${(CC_TIERS[data.tier]||{}).label || data.tier}!`, 'var(--green)', 3000);
+      showGruberToast(`🔓 Unlocked — ${(CC_TIERS[data.tier]||{}).label || data.tier}!`, 3000);
       return true;
     }
 
-    // Payment confirmed but webhook hasn't landed yet — worth retrying quietly
+    // Payment confirmed but webhook hasn't landed yet — worth retrying quietly.
+    // Re-show the toast on every attempt (not just the first) so it stays
+    // visible the whole time instead of disappearing mid-retry.
     const stillPending = (data.reason || '').toLowerCase().includes('not yet confirmed');
     if(stillPending && attempt < MAX_ATTEMPTS){
-      if(attempt === 1){
-        showMsg('Confirming your payment…', 'var(--muted)', RETRY_DELAY_MS);
-      }
+      showGruberToast('Confirming your payment…', RETRY_DELAY_MS + 200);
       await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
       return redeemToken(tokenStr, attempt + 1);
     }
 
     // Genuinely invalid, or we've retried enough times — give up and say so
-    showMsg(`Unlock failed: ${data.reason || 'invalid token'}`, 'var(--orange)', 4000);
+    showGruberToast(`Unlock failed: ${data.reason || 'invalid token'}`, 4000);
     return false;
   }catch(e){
     if(attempt < MAX_ATTEMPTS){
       await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
       return redeemToken(tokenStr, attempt + 1);
     }
-    showMsg('Could not verify unlock — check connection and try again', 'var(--orange)', 3000);
+    showGruberToast('Could not verify unlock — check connection and try again', 3000);
     return false;
   }
 }
@@ -274,9 +274,9 @@ async function purchaseTier(tierKey){
     });
     const data = await res.json();
     if(data.url){ window.location.href = data.url; }
-    else { showMsg('Checkout unavailable right now — try again shortly', 'var(--orange)', 3000); }
+    else { showGruberToast('Checkout unavailable right now — try again shortly', 3000); }
   }catch(e){
-    showMsg('Checkout unavailable right now — try again shortly', 'var(--orange)', 3000);
+    showGruberToast('Checkout unavailable right now — try again shortly', 3000);
   }
 }
 
@@ -415,6 +415,18 @@ const FALLBACK_BANKS = {
       {label:"FOUNTAIN LAKES ENSEMBLE",items:["PRUE AND TRUDE","GARY POOLE","THE BOLTON SISTERS","MANDY PATINKIN"]},
       {label:"RUNNING CATCHPHRASES",items:["LOOK AT MOIYE","NOICE DIFFERENT UNUSUAL","STUNNED MULLET","EFFLUENT"]},
       {label:"WHAT THEY CALL THEMSELVES",items:["STUPID GIRL","HORN BAG","HIGH MAINTENANCE","SECOND BEST FRIEND"]},
+    ]},
+    {themeLabel:"ICONIC WHEELS",categories:[
+      {label:"ICONIC MOVIE & TV CARS",pool:["DELOREAN","GENERAL LEE","KITT","HERBIE","BULLITT","ECTO-1"]},
+      {label:"F1 TEAM NAMES",pool:["MCLAREN","WILLIAMS","FERRARI","AUDI","RED BULL","MERCEDES","ASTON MARTIN","ALPINE"]},
+      {label:"MOTORCYCLE BRANDS",pool:["HARLEY-DAVIDSON","TRIUMPH","HONDA","KAWASAKI","YAMAHA","DUCATI"]},
+      {label:"FAMOUS BOND CARS",pool:["ASTON MARTIN DB5","LOTUS ESPRIT","ASTON MARTIN DBS","BMW Z3","ASTON MARTIN VANQUISH","CITROËN 2CV"]},
+    ]},
+    {themeLabel:"GLOBAL CHAMPIONS",categories:[
+      {label:"THE BIG FOUR",items:["FEDERER","NADAL","DJOKOVIC","MURRAY"]},
+      {label:"TENNIS LEGENDS",pool:["SERENA WILLIAMS","VENUS WILLIAMS","STEFFI GRAF","MARTINA NAVRATILOVA","MONICA SELES","MARTINA HINGIS"]},
+      {label:"GOLF LEGENDS",pool:["TIGER WOODS","JACK NICKLAUS","ARNOLD PALMER","RORY MCILROY","GARY PLAYER","SEVE BALLESTEROS"]},
+      {label:"GRAND SLAM TOURNAMENTS",items:["WIMBLEDON","US OPEN","FRENCH OPEN","AUSTRALIAN OPEN"]},
     ]},
   ],
   kids:[
@@ -579,7 +591,24 @@ function closeHintDrawer(){
   document.getElementById('hintOverlay').classList.remove('open');
 }
 
+// If a category defines a `pool` larger than 4 items, pick a random 4 of
+// them each time the puzzle is launched — the shuffle-bag logic upstream
+// still only ever sees one puzzle per themeLabel, so puzzle rotation and
+// no-repeat behaviour is completely unaffected by this.
+function resolvePuzzleCategories(puzzle){
+  return {
+    ...puzzle,
+    categories: puzzle.categories.map(cat=>{
+      if(Array.isArray(cat.pool) && cat.pool.length > 4){
+        return { label: cat.label, items: shuffleArray(cat.pool).slice(0,4) };
+      }
+      return cat;
+    })
+  };
+}
+
 function launchGame(puzzle){
+  puzzle = resolvePuzzleCategories(puzzle);
   S.lives=4;S.selected=[];S.tiles=[];S.solvedCats=[];
   S.gameActive=false;S._puzzle=puzzle;
   S.hintedCats=new Set();
@@ -779,13 +808,13 @@ function awardStar(catName){
   setTimeout(()=>el.remove(),1100);
 }
 
-function showGruberToast(msg){
+function showGruberToast(msg, dur = 2600){
   document.querySelector('.gruber-toast')?.remove();
   const t=document.createElement('div');
   t.className='gruber-toast';
   t.textContent=msg;
   document.body.appendChild(t);
-  setTimeout(()=>t.remove(),2600);
+  setTimeout(()=>t.remove(),dur);
 }
 
 // ── TILE HINT ──
